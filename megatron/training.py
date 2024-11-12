@@ -583,7 +583,16 @@ def forward_step(
 ):
     """Forward step."""
     if neox_args.is_pipe_parallel:
-        return model.eval_batch(data_iterator, return_logits=return_logits)
+        if return_logits:
+            loss, logits = model.eval_batch(data_iterator, return_logits=return_logits)
+        else:
+            loss = model.eval_batch(data_iterator, return_logits=return_logits)
+        # If only 1 GPU then we do not get back an array
+        if loss.dim() == 0:
+            loss = loss.unsqueeze(0)
+        if return_logits:
+            return loss, logits
+        return loss
 
     # Get the batch.
     if neox_args.memory_profiling and neox_args.iteration:
@@ -1599,13 +1608,18 @@ def evaluate(
                 else neox_args.gradient_accumulation_steps
             ):
                 # Forward evaluation
-                loss, metric_dict = forward_step_fn(
+                maybe_tuple = forward_step_fn(
                     model=model,
                     data_iterator=data_iterator,
                     neox_args=neox_args,
                     timers=timers,
                     reference_model=reference_model,
                 )
+                if type(maybe_tuple) is tuple:
+                    loss, metric_dict = maybe_tuple
+                else:
+                    loss = maybe_tuple
+                    metric_dict = {}
                 losses.append(loss)
                 for key in metric_dict.keys():
                     metric_dicts[key].append(metric_dict[key])

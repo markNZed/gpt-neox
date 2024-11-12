@@ -441,26 +441,24 @@ def reshard_and_split_qkv(
             state_dict[hf_key] = proj.clone()
         return state_dict
 
-
 def get_mlp_naming_convention(loaded_tp_ranks, layer_idx, sequential):
     """Determine whether the checkpoint uses the legacy or new MLP naming convention."""
-    print(list(loaded_tp_ranks[0]["module"].keys()))
-    if any(
-        [
-            ["mlp.linear1.weight" in key for key in list(state_dict["module"].keys())]
-            for state_dict in loaded_tp_ranks
-        ]
-    ):
+    # Get the state_dict from the first rank
+    state_dict = loaded_tp_ranks[0]
+
+    # Check if 'module' key exists
+    if 'module' in state_dict:
+        state_dict = state_dict['module']
+    else:
+        # Use the state_dict as is (pipeline module case)
+        pass
+
+    keys = list(state_dict.keys())
+
+    # Now check for the naming conventions
+    if any("mlp.linear1.weight" in key for key in keys):
         return "new"
-    elif any(
-        [
-            [
-                "mlp.dense_h_to_4h.weight" in key
-                for key in list(state_dict["module"].keys())
-            ]
-            for state_dict in loaded_tp_ranks
-        ]
-    ):
+    elif any("mlp.dense_h_to_4h.weight" in key for key in keys):
         return "legacy"
     else:
         raise ValueError("Unable to determine MLP naming convention in checkpoint")
